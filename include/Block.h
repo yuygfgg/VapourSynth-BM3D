@@ -436,7 +436,7 @@ public:
         double distMul = double(1) / MSE2SSE;
         dist_type thSSE = static_cast<dist_type>(thMSE * MSE2SSE);
 
-#if defined(__SSE2__)
+#if defined(__SSE2__) || defined(__ARM_NEON__)
         static const ptrdiff_t simd_step = 8;
         const ptrdiff_t simd_residue = Width() % simd_step;
         const ptrdiff_t simd_width = Width() - simd_residue;
@@ -511,6 +511,56 @@ public:
                             srcp += src_stride2;
                         }
                     }
+#elif defined(__ARM_NEON__)
+                    if (simd_width > 0)
+                    {
+                        auto refp = refp0;
+                        auto srcp = srcp0;
+
+                        float32x4_t ssum = vdupq_n_f32(0.0f);
+
+                        for (PCType y = 0; y < Height(); ++y)
+                        {
+                            for (const auto upper = refp + simd_width; refp < upper; refp += simd_step, srcp += simd_step)
+                            {
+                                const float32x4_t r1 = vld1q_f32(refp);
+                                const float32x4_t r2 = vld1q_f32(refp + 4);
+                                const float32x4_t s1 = vld1q_f32(srcp);
+                                const float32x4_t s2 = vld1q_f32(srcp + 4);
+                                const float32x4_t d1 = vsubq_f32(r1, s1);
+                                const float32x4_t d2 = vsubq_f32(r2, s2);
+                                const float32x4_t d1sqr = vmulq_f32(d1, d1);
+                                const float32x4_t d2sqr = vmulq_f32(d2, d2);
+                                ssum = vaddq_f32(ssum, d1sqr);
+                                ssum = vaddq_f32(ssum, d2sqr);
+                            }
+
+                            refp += simd_residue;
+                            srcp += src_stride1;
+                        }
+
+                        alignas(16) FLType ssum_f32[4];
+                        vst1q_f32(ssum_f32, ssum);
+                        dist += ssum_f32[0] + ssum_f32[1] + ssum_f32[2] + ssum_f32[3];
+                    }
+
+                    if (simd_residue > 0)
+                    {
+                        auto refp = refp0 + simd_width;
+                        auto srcp = srcp0 + simd_width;
+
+                        for (PCType y = 0; y < Height(); ++y)
+                        {
+                            for (const auto upper = refp + simd_residue; refp < upper; ++refp, ++srcp)
+                            {
+                                dist_type temp = static_cast<dist_type>(*refp) - static_cast<dist_type>(*srcp);
+                                dist += temp * temp;
+                            }
+
+                            refp += simd_width;
+                            srcp += src_stride2;
+                        }
+                    }
 #else
                     for (PCType y = 0; y < Height(); ++y)
                     {
@@ -562,7 +612,7 @@ public:
         size_t index = match_code.size();
         match_code.resize(index + search_pos.size());
 
-#if defined(__SSE2__)
+#if defined(__SSE2__) || defined(__ARM_NEON__)
         static const ptrdiff_t simd_step = 8;
         const ptrdiff_t simd_residue = Width() % simd_step;
         const ptrdiff_t simd_width = Width() - simd_residue;
@@ -621,6 +671,50 @@ public:
                 {
                     for (const auto upper = refp + simd_residue; refp < upper; ++refp, ++srcp)
                     {
+                        dist_type temp = static_cast<dist_type>(*refp) - static_cast<dist_type>(*srcp);
+                        dist += temp * temp;
+                    }
+
+                    refp += simd_width;
+                    srcp += src_stride2;
+                }
+            }
+#elif defined(__ARM_NEON__)
+            if (simd_width > 0) {
+                auto refp = refp0;
+                auto srcp = srcp0;
+
+                float32x4_t ssum = vdupq_n_f32(0.0f);
+
+                for (PCType y = 0; y < Height(); ++y) {
+                    for (const auto upper = refp + simd_width; refp < upper; refp += simd_step, srcp += simd_step) {
+                        const float32x4_t r1 = vld1q_f32(refp);
+                        const float32x4_t r2 = vld1q_f32(refp + 4);
+                        const float32x4_t s1 = vld1q_f32(srcp);
+                        const float32x4_t s2 = vld1q_f32(srcp + 4);
+                        const float32x4_t d1 = vsubq_f32(r1, s1);
+                        const float32x4_t d2 = vsubq_f32(r2, s2);
+                        const float32x4_t d1sqr = vmulq_f32(d1, d1);
+                        const float32x4_t d2sqr = vmulq_f32(d2, d2);
+                        ssum = vaddq_f32(ssum, d1sqr);
+                        ssum = vaddq_f32(ssum, d2sqr);
+                    }
+
+                    refp += simd_residue;
+                    srcp += src_stride1;
+                }
+
+                alignas(16) FLType ssum_f32[4];
+                vst1q_f32(ssum_f32, ssum);
+                dist += ssum_f32[0] + ssum_f32[1] + ssum_f32[2] + ssum_f32[3];
+            }
+
+            if (simd_residue > 0) {
+                auto refp = refp0 + simd_width;
+                auto srcp = srcp0 + simd_width;
+
+                for (PCType y = 0; y < Height(); ++y) {
+                    for (const auto upper = refp + simd_residue; refp < upper; ++refp, ++srcp) {
                         dist_type temp = static_cast<dist_type>(*refp) - static_cast<dist_type>(*srcp);
                         dist += temp * temp;
                     }
@@ -790,7 +884,7 @@ public:
         PCType range, PCType step = 1) const
     {
         range = range / step * step;
-        
+
         PosCode new_search_pos((range / step * 2 + 1) * (range / step * 2 + 1));
         size_t index = 0;
         AddSearchPos(new_search_pos, index, ref_pos, src_height, src_width, range, step);

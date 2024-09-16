@@ -41,8 +41,9 @@
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Instruction intrinsics
 
-
-#if defined(__AVX2__) || defined(__AVX__)
+#if defined(__ARM_NEON__)
+#include <arm_neon.h>
+#elif defined(__AVX2__) || defined(__AVX__)
 #include <immintrin.h>
 #elif defined(__SSE4_2__)
 #include <nmmintrin.h>

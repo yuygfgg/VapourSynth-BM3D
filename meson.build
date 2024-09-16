@@ -1,10 +1,10 @@
 project('BM3D', 'cpp',
-  default_options : ['buildtype=release', 'b_ndebug=if-release', 'cpp_std=c++14'],
+  default_options : ['buildtype=release', 'b_ndebug=if-release', 'cpp_std=c++14', 'b_lto=true'],
   meson_version : '>=0.48.0',
   version : '8'
 )
 
-add_project_arguments('-Wno-unused-local-typedefs', language : 'cpp')
+add_project_arguments('-Wno-unused-local-typedefs', '-funroll-loops', language : 'cpp')
 
 sources = [
   'include/Block.h',

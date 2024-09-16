@@ -101,6 +101,42 @@ void VBM3D_Final_Process::CollaborativeFilter(int plane,
     alignas(16) FLType l2wiener_sum_f32[4];
     _mm_store_ps(l2wiener_sum_f32, l2wiener_sum);
     L2Wiener += l2wiener_sum_f32[0] + l2wiener_sum_f32[1] + l2wiener_sum_f32[2] + l2wiener_sum_f32[3];
+#elif defined(__ARM_NEON__)
+    static const ptrdiff_t simd_step = 4;
+    const ptrdiff_t simd_residue = srcGroup.size() % simd_step;
+    const ptrdiff_t simd_width = srcGroup.size() - simd_residue;
+
+    const float32x4_t sgm_sqr = vdupq_n_f32(sigmaSquare);
+    float32x4_t l2wiener_sum = vdupq_n_f32(0.0f);
+
+    for (const float* upper1 = srcp + simd_width; srcp < upper1; srcp += simd_step, refp += simd_step) {
+        const float32x4_t s1 = vld1q_f32(srcp);
+        const float32x4_t r1 = vld1q_f32(refp);
+
+        const float32x4_t r1sqr = vmulq_f32(r1, r1);
+
+        const float32x4_t denom = vaddq_f32(r1sqr, sgm_sqr);
+        float32x4_t recip = vrecpeq_f32(denom);
+
+        // First refinement
+        recip = vmulq_f32(vrecpsq_f32(denom, recip), recip);
+
+        // Second refinement for higher precision
+        recip = vmulq_f32(vrecpsq_f32(denom, recip), recip);
+
+        const float32x4_t wiener = vmulq_f32(r1sqr, recip);
+
+        const float32x4_t d1 = vmulq_f32(s1, wiener);
+
+        vst1q_f32(const_cast<float*>(srcp), d1);
+
+        l2wiener_sum = vaddq_f32(l2wiener_sum, vmulq_f32(wiener, wiener));
+    }
+
+    float l2wiener_sum_f32[4];
+    vst1q_f32(l2wiener_sum_f32, l2wiener_sum);
+
+    L2Wiener += l2wiener_sum_f32[0] + l2wiener_sum_f32[1] + l2wiener_sum_f32[2] + l2wiener_sum_f32[3];
 #endif
 
     for (; srcp < upper; ++srcp, ++refp)

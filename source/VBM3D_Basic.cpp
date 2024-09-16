@@ -119,6 +119,33 @@ void VBM3D_Basic_Process::CollaborativeFilter(int plane,
     alignas(16) int32_t cmp_sum_i32[4];
     _mm_store_si128(reinterpret_cast<__m128i *>(cmp_sum_i32), cmp_sum);
     retainedCoefs += cmp_sum_i32[0] + cmp_sum_i32[1] + cmp_sum_i32[2] + cmp_sum_i32[3];
+#elif defined(__ARM_NEON__)
+    static const uint32x4_t abs_mask = vdupq_n_u32(0x7FFFFFFF);
+    static const ptrdiff_t simd_step = 4;
+    const ptrdiff_t simd_residue = srcGroup.size() % simd_step;
+    const ptrdiff_t simd_width = srcGroup.size() - simd_residue;
+
+    int32x4_t cmp_sum = vdupq_n_s32(0);
+
+    for (const float* upper1 = srcp + simd_width; srcp < upper1; srcp += simd_step, thrp += simd_step) {
+        const float32x4_t s1 = vld1q_f32(srcp);
+        const float32x4_t t1 = vld1q_f32(thrp);
+
+        const uint32x4_t s1_abs = vandq_u32(vreinterpretq_u32_f32(s1), abs_mask);
+
+        const uint32x4_t cmp = vcgtq_f32(vreinterpretq_f32_u32(s1_abs), t1);
+
+        const float32x4_t d1 = vbslq_f32(cmp, s1, vdupq_n_f32(0));
+
+        vst1q_f32(const_cast<float*>(srcp), d1);
+
+        cmp_sum = vsubq_s32(cmp_sum, vreinterpretq_s32_u32(cmp));
+    }
+
+    alignas(16) int32_t cmp_sum_i32[4];
+    vst1q_s32(cmp_sum_i32, cmp_sum);
+
+    retainedCoefs += cmp_sum_i32[0] + cmp_sum_i32[1] + cmp_sum_i32[2] + cmp_sum_i32[3];
 #endif
 
     for (; srcp < upper; ++srcp, ++thrp)
