@@ -127,7 +127,7 @@ void BM3D_Basic_Process::CollaborativeFilter(int plane,
 
     int32x4_t cmp_sum = vdupq_n_s32(0);
 
-    for (const float* upper1 = srcp + simd_width; srcp < upper1; srcp += simd_step, thrp += simd_step) {
+    for (const auto upper1 = srcp + simd_width; srcp < upper1; srcp += simd_step, thrp += simd_step) {
         const float32x4_t s1 = vld1q_f32(srcp);
         const float32x4_t t1 = vld1q_f32(thrp);
 

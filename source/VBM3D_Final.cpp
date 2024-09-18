@@ -109,7 +109,7 @@ void VBM3D_Final_Process::CollaborativeFilter(int plane,
     const float32x4_t sgm_sqr = vdupq_n_f32(sigmaSquare);
     float32x4_t l2wiener_sum = vdupq_n_f32(0.0f);
 
-    for (const float* upper1 = srcp + simd_width; srcp < upper1; srcp += simd_step, refp += simd_step) {
+    for (const auto upper1 = srcp + simd_width; srcp < upper1; srcp += simd_step, refp += simd_step) {
         const float32x4_t s1 = vld1q_f32(srcp);
         const float32x4_t r1 = vld1q_f32(refp);
 
